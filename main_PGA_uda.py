@@ -136,6 +136,7 @@ def train(domain_list, classnames, clip_model, preprocess, args):
         print("Start training on {}".format(target_name))
         source_name_list = domain_list.copy()
         source_name_list.remove(target_name)
+        
         for source_name in source_name_list:
             print("_" * 50)
             print("Source domain:", source_name)

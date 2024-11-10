@@ -596,7 +596,7 @@ def main(args):
 	n_cls = len(classnames)
 	classnames.sort()
 
-	args.output_dir = args.output_dir + str(args).replace(", ", "/").replace(
+	args.output_dir = 'outputs/'+ args.output_dir + str(args).replace(", ", "/").replace(
 		"'", ""
 	).replace("(", "").replace(")", "").replace("Namespace", "")
 

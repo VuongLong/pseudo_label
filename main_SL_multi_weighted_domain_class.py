@@ -137,6 +137,33 @@ def save_plot(target_name, target_test_loader, custom_clip_model, args):
 		with open(os.path.join(fol_name, "{}_Y_train.pkl".format(target_name)), "wb") as fp:
 			pickle.dump(Y_train, fp)
 
+
+def test_w(target_test_loader, custom_clip_model, weight, tokenized_prompts, args):
+	scale = custom_clip_model.logit_scale.exp()
+
+	correct = 0
+	tot = 0
+	with torch.no_grad():
+		for data, label in target_test_loader:
+			tot += args.batch_size
+			data = data.to(args.device)
+			label = label.to(args.device)
+
+			tot_logits = 0
+
+			# TODO: test on multiple prompts
+			
+			img_feature = custom_clip_model.forward_img(data)
+			logits = img_feature @ weight.t()
+			tot_logits += logits
+			output = torch.argmax(tot_logits, dim=1) # % n_cls
+
+			correct += (output == label).sum().item()
+
+		# print("accuracy is: {} with a total of {} data".format(correct / tot, tot))
+
+	return correct / tot
+
 def test(target_test_loader, custom_clip_model, prompt_list, tokenized_prompts, args, running_means=None):
 	scale = custom_clip_model.logit_scale.exp()
 
@@ -255,8 +282,14 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 		param.requires_grad_(False)
 	print("Custom_Clip", summary(custom_clip_model))
 	best_accs = []
-	
+	feature_dim = 1024
+	if args.dataset == "DomainNet":
+		feature_dim = 512
 	for target_name in domain_list:
+
+		if target_domain != target_name and args.dataset == "DomainNet":
+			continue
+		
 		print("*" * 50)
 		print("Start training on {}".format(target_name))
 
@@ -326,9 +359,11 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 		text = clip.tokenize(class_list_tokenize).to(args.device)
 
 		n_domains = len(source_name_list)
-		running_means = torch.zeros(n_domains, n_cls, 1024).to(args.device)
+		running_means = torch.zeros(n_domains, n_cls, feature_dim).to(args.device)
 		running_count = torch.zeros(n_domains, n_cls).to(args.device)
-
+		
+		mean_target_txt_features = 0
+		mean_count = 0
 
 		best_acc = 0
 		n_conflict = 0
@@ -470,6 +505,10 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 					if step% args.evaluation_step:
 						continue
 
+			if step > 3000:
+				mean_target_txt_features += target_txt_features
+				mean_count +=1
+
 			if (step) % args.evaluation_step:
 				continue
 			prompt_list = []
@@ -477,54 +516,16 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 			for source_index in range(len(source_name_list)):
 				source_prompt, _ = prompt_learner(source_index=source_index)
 				prompt_list.append(source_prompt)
-				
-			if (step) % args.evaluation_step == 0:
-				acc = test(
-						target_test_loader,
-						custom_clip_model,
-						[target_prompts],
-						tokenized_prompts,
-						args,
-					)
-				print('Target: ',acc)
-
-				acc = test(
+			
+			acc = test(
 					target_test_loader,
 					custom_clip_model,
-					prompt_list,
+					[target_prompts],
 					tokenized_prompts,
 					args,
 				)
-				print('source combined: ', acc)
+			print('Target: ',acc)
 
-				acc = test(
-					target_test_loader,
-					custom_clip_model,
-					prompt_list,
-					tokenized_prompts,
-					args,
-					running_means
-				)
-				print('weight source combined: ', acc)
-
-			prompt_list.append(target_prompts)
-			acc = test(
-				target_test_loader,
-				custom_clip_model,
-				prompt_list,
-				tokenized_prompts,
-				args,
-				running_means
-			)
-			print('weight all: ', acc)
-
-			acc = test(
-				target_test_loader,
-				custom_clip_model,
-				prompt_list,
-				tokenized_prompts,
-				args,
-			)
 
 			pbar.set_description(
 				f"step: {step}, accuracy: {acc}, target total loss: {target_loss.item()}"
@@ -532,6 +533,46 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 			if acc > best_acc:
 				best_acc = acc
 			print(f"Best accuracy so far: {best_acc}, step {step}, accuracy {acc}")            
+		
+		acc = test_w(
+			target_test_loader,
+			custom_clip_model,
+			mean_target_txt_features/mean_count,
+			tokenized_prompts,
+			args,
+		)
+		print('average_weight: ', acc)
+
+		acc = test(
+			target_test_loader,
+			custom_clip_model,
+			prompt_list,
+			tokenized_prompts,
+			args,
+		)
+		print('source combined: ', acc)
+
+		acc = test(
+			target_test_loader,
+			custom_clip_model,
+			prompt_list,
+			tokenized_prompts,
+			args,
+			running_means
+		)
+		print('weight source combined: ', acc)
+		
+		prompt_list.append(target_prompts)
+		acc = test(
+			target_test_loader,
+			custom_clip_model,
+			prompt_list,
+			tokenized_prompts,
+			args,
+			running_means
+		)
+		print('weight all: ', acc)
+
 		best_accs.append(best_acc)
 		print("Best accuracy for each domain:", best_accs, "Average:", np.mean(best_accs))
 		print("Number of conflicts:", n_conflict, "Total steps:", args.prompt_iteration, "Conflict rate:", n_conflict/args.prompt_iteration)
@@ -571,7 +612,7 @@ def main(args):
 	n_cls = len(classnames)
 	classnames.sort()
 
-	args.output_dir = args.output_dir + str(args).replace(", ", "/").replace(
+	args.output_dir = 'outputs/'+ args.output_dir + str(args).replace(", ", "/").replace(
 		"'", ""
 	).replace("(", "").replace(")", "").replace("Namespace", "")
 

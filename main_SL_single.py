@@ -116,7 +116,34 @@ def args_update(args):
 	if args.dataset == "ViTL_OfficeHome":
 		args.backbone = "ViT-L/14"
 		args.prompt_iteration = 1000
-		
+
+
+def test_w(target_test_loader, custom_clip_model, weight, tokenized_prompts, args):
+	scale = custom_clip_model.logit_scale.exp()
+
+	correct = 0
+	tot = 0
+	with torch.no_grad():
+		for data, label in target_test_loader:
+			tot += args.batch_size
+			data = data.to(args.device)
+			label = label.to(args.device)
+
+			tot_logits = 0
+
+			# TODO: test on multiple prompts
+			
+			img_feature = custom_clip_model.forward_img(data)
+			logits = img_feature @ weight.t()
+			tot_logits += logits
+			output = torch.argmax(tot_logits, dim=1) # % n_cls
+
+			correct += (output == label).sum().item()
+
+		# print("accuracy is: {} with a total of {} data".format(correct / tot, tot))
+
+	return correct / tot
+
 def test(target_test_loader, custom_clip_model, prompt_list, tokenized_prompts, args):
 	scale = custom_clip_model.logit_scale.exp()
 
@@ -237,7 +264,8 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 		
 		text = clip.tokenize(class_list_tokenize).to(args.device)
 		
-
+		mean_target_txt_features = 0
+		mean_count = 0
 		best_acc = 0
 		n_conflict = 0
 		grad_cosine = []
@@ -333,6 +361,11 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 					if step%50:
 						continue
 			prompt_list = [source_prompts, target_prompts]
+			
+			if step > 100:
+				mean_target_txt_features += target_txt_features
+				mean_count +=1
+
 			if step % 50:
 				continue
 			
@@ -351,6 +384,16 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 				tokenized_prompts,
 				args,
 			)
+			
+			if step > 100:
+				source_acc = test_w(
+					target_test_loader,
+					custom_clip_model,
+					mean_target_txt_features/mean_count,
+					tokenized_prompts,
+					args,
+				)
+				print('average_weight: ', source_acc)
 
 			source_acc = test(
 				target_test_loader,
@@ -359,6 +402,8 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 				tokenized_prompts,
 				args,
 			)
+
+			
 
 			pbar.set_description(
 				f"step: {step}, accuracy: {acc}, target total loss: {target_loss.item()}, classification: {target_cls_loss.item()}"
@@ -408,7 +453,7 @@ def main(args):
 	n_cls = len(classnames)
 	classnames.sort()
 
-	args.output_dir = args.output_dir + str(args).replace(", ", "/").replace(
+	args.output_dir = 'outputs/'+ args.output_dir + str(args).replace(", ", "/").replace(
 		"'", ""
 	).replace("(", "").replace(")", "").replace("Namespace", "")
 
