@@ -203,12 +203,12 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 	for target_name in domain_list:
 		print("*" * 50)
 		print("Start training on {}".format(target_name))
-		
-		tgt_save_path = os.path.join(args.output_dir, target_name)
-		os.makedirs(tgt_save_path, exist_ok=True)
-		orig_stdout = sys.stdout
-		f = open(tgt_save_path+ "/train.log", "w+")
-		sys.stdout = f
+		if target_domain == target_name:
+			tgt_save_path = os.path.join(args.output_dir, target_name)
+			os.makedirs(tgt_save_path, exist_ok=True)
+			orig_stdout = sys.stdout
+			f = open(tgt_save_path+ "/train.log", "w+")
+			sys.stdout = f
 
 	
 		source_name_list = domain_list.copy()
@@ -218,9 +218,23 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 
 		target_path = os.path.join(args.data_root, target_name)
 
-		target_train_loader = load_pseudo_label_data(
-			target_name, target_path, preprocess, clip_model, args
-		)
+		if args.dataset == "DomainNet":
+			target_train_dataset = SingleSourceDataset(
+				args.data_root, [target_name], preprocess
+			)
+			target_train_loader = torch.utils.data.DataLoader(
+				target_train_dataset,
+				batch_size=args.batch_size,
+				num_workers=4,
+				pin_memory=True,
+			)	
+		else:
+			target_train_loader = load_pseudo_label_data(
+				target_name, target_path, preprocess, clip_model, args
+			)
+		# target_train_loader = load_pseudo_label_data(
+		# 	target_name, target_path, preprocess, clip_model, args
+		# )
 
 		target_test_loader = load_data(target_path, preprocess, args)
 
@@ -358,59 +372,69 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 					if step%500:
 						continue
 				else:
-					if step%50:
+					if step%100:
 						continue
 			prompt_list = [source_prompts, target_prompts]
 			
-			if step > 100:
-				mean_target_txt_features += target_txt_features
-				mean_count +=1
+			if args.dataset == "DomainNet":
+				if step > 3000:
+					mean_target_txt_features += target_txt_features
+					mean_count +=1
+			else:
+				if step > 100:
+					mean_target_txt_features += target_txt_features
+					mean_count +=1
 
-			if step % 50:
+			if step % 100:
 				continue
 			
+			
 			acc = test(
-				target_test_loader,
-				custom_clip_model,
-				prompt_list,
-				tokenized_prompts,
-				args,
-			)
-
-			target_acc = test(
 				target_test_loader,
 				custom_clip_model,
 				[target_prompts],
 				tokenized_prompts,
 				args,
 			)
-			
-			if step > 100:
-				source_acc = test_w(
-					target_test_loader,
-					custom_clip_model,
-					mean_target_txt_features/mean_count,
-					tokenized_prompts,
-					args,
-				)
-				print('average_weight: ', source_acc)
-
-			source_acc = test(
-				target_test_loader,
-				custom_clip_model,
-				[source_prompts],
-				tokenized_prompts,
-				args,
-			)
-
-			
+							
 
 			pbar.set_description(
 				f"step: {step}, accuracy: {acc}, target total loss: {target_loss.item()}, classification: {target_cls_loss.item()}"
 			)
 			if acc > best_acc:
 				best_acc = acc
-			print(f"Best accuracy so far: {best_acc}, step {step}, accuracy {acc}, target accuracy {target_acc}, source accuracy {source_acc}")
+			print(f"Best accuracy so far: {best_acc}, step {step}, target accuracy {acc}")
+		
+		if target_domain != target_name:
+			continue
+		acc = test(
+				target_test_loader,
+				custom_clip_model,
+				prompt_list,
+				tokenized_prompts,
+				args,
+			)
+		print('Combined: ', acc)
+
+		source_acc = test(
+				target_test_loader,
+				custom_clip_model,
+				[source_prompts],
+				tokenized_prompts,
+				args,
+			)
+		print('Source: ', source_acc)
+		
+
+		source_acc = test_w(
+			target_test_loader,
+			custom_clip_model,
+			mean_target_txt_features/mean_count,
+			tokenized_prompts,
+			args,
+		)
+		print('average_weight: ', source_acc)
+
 		best_accs.append(best_acc)
 		print("Best accuracy for each domain:", best_accs, "Average:", np.mean(best_accs))
 		sys.stdout = orig_stdout

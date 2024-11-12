@@ -15,7 +15,7 @@ from torch import nn
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import torch.nn.functional as F
 
-from dataloader import load_pseudo_label_data, load_data
+from dataloader import load_pseudo_label_data, load_data, load_data_meta
 from clip_custom import clip
 from model_multi import Custom_Clip, PromptGenerator
 from utils import disable_running_stats, enable_running_stats
@@ -188,8 +188,10 @@ def test(target_test_loader, custom_clip_model, prompt_list, tokenized_prompts, 
 				weights = torch.zeros(running_means.shape[0], features.shape[0], running_means.shape[1]).to(args.device)
 
 				for source_index in range(running_means.shape[0]):
+					# print(features.unsqueeze(1).shape, running_means[source_index].unsqueeze(0).shape)
 					weights[source_index] = torch.norm((features.unsqueeze(1) - running_means[source_index].unsqueeze(0)), p=2, dim=2)
 				weights = nn.Softmax(dim=0)(-weights*args.w_scale)
+				# weights /= weights.sum(0, keepdim=True)
 				weights = weights.detach()
 
 			# TODO: test on multiple prompts
@@ -213,6 +215,36 @@ def test(target_test_loader, custom_clip_model, prompt_list, tokenized_prompts, 
 
 	return correct / tot
 
+
+def make_meta_test(loader, custom_clip_model, num_iter=20):
+	datas = []
+	labels = []
+	with torch.no_grad():
+		step = 0
+		for data, label in loader:
+			step += 1
+			if step > num_iter:
+				break
+			data = data.to(args.device)
+			label = label.to(args.device)
+			img_feature, features = custom_clip_model.forward_img_both(data)
+			datas.append(img_feature.clone().unsqueeze(0))
+			labels.append(label.clone().unsqueeze(0))
+	return [torch.cat(datas, dim=0), torch.cat(labels, dim=0)]
+
+
+def test_meta(datas, labels, prompt):
+
+	correct = 0
+	tot = datas.shape[0]*datas.shape[1]
+	# print(datas.shape)
+	# print(labels.shape)
+	with torch.no_grad():
+		for idx in range(len(datas)):
+			logits = datas[idx] @ prompt.t()
+			output = torch.argmax(logits, dim=1)
+			correct += (output == labels[idx]).sum().item()
+	return correct / tot
 
 def soft_cross_entropy_loss(predictions, soft_targets):
 
@@ -335,7 +367,14 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 			)
 
 		target_test_loader = load_data(target_path, preprocess, args)
-	
+		if target_domain == target_name:
+			meta_test = []
+			meta_loaders = []
+			for ii in source_name_list:
+				aa = load_data(os.path.join(args.data_root, ii), preprocess, args)
+				meta_test.append(make_meta_test(
+								aa, 
+								custom_clip_model, num_iter=100))
 			
 		source_train_dataset = MultiSourceDataset(
 			args.data_root, source_name_list, preprocess
@@ -383,8 +422,8 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 		text = clip.tokenize(class_list_tokenize).to(args.device)
 
 		n_domains = len(source_name_list)
-		running_means = torch.zeros(n_domains, n_cls, feature_dim).to(args.device)
-		running_count = torch.zeros(n_domains, n_cls).to(args.device)
+		running_means = torch.zeros(n_domains+1, n_cls, feature_dim).to(args.device)
+		running_count = torch.zeros(n_domains+1, n_cls).to(args.device)
 		
 		mean_target_txt_features = 0
 		mean_count = 0
@@ -442,9 +481,9 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 					running_count[source_index][ d_cls] += cls_features.shape[0]
 					running_means[source_index][ d_cls] /= running_count[source_index][ d_cls]
 					
-					# running_means[n_domains][d_cls] = running_means[n_domains][ d_cls] * running_count[n_domains][ d_cls] + cls_features.sum(0)
-					# running_count[n_domains][ d_cls] += cls_features.shape[0]
-					# running_means[n_domains][ d_cls] /= running_count[n_domains][ d_cls]
+					running_means[n_domains][d_cls] = running_means[n_domains][ d_cls] * running_count[n_domains][ d_cls] + cls_features.sum(0)
+					running_count[n_domains][ d_cls] += cls_features.shape[0]
+					running_means[n_domains][ d_cls] /= running_count[n_domains][ d_cls]
 
 
 			source_loss = 0
@@ -475,13 +514,45 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 			)
 			target_logits = target_img_features @ target_txt_features.t()
 
-			distance = torch.zeros(running_means.shape[0], target_img_features.shape[0], n_cls).to(args.device)
-			for source_index in range(running_means.shape[0]):
-				# distance[source_index] = calc_distance(features, running_means[source_index])
-				#weights = nn.Softmax(dim=0)(-distance*args.w_scale).detach()
-				distance[source_index] = features @ running_means[source_index].t()
-				weights = nn.Softmax(dim=0)(distance*args.w_scale).detach()
+			# distance = torch.zeros(running_means.shape[0], target_img_features.shape[0], n_cls).to(args.device)
+			# for source_index in range(running_means.shape[0]):
+			# 	if args.distance == 'l2':
+			# 		distance[source_index] = calc_distance(features, running_means[source_index])
+			# 		# weights = (distance <= distance[-1,...].unsqueeze(0)).float()
+			# 		# weights = weights / weights.sum(dim=0, keepdim=True)
 
+			# 		weights = nn.Softmax(dim=0)(-distance*args.w_scale).detach()
+
+				
+			# 	else:
+			# 		distance[source_index] = features @ running_means[source_index].t()
+			# 		# weights = (distance >= distance[-1,...].unsqueeze(0)).float()
+			# 		# weights = weights / weights.sum(dim=0, keepdim=True)
+			# 		weights = nn.Softmax(dim=0)(distance*args.w_scale).detach()
+
+
+			with torch.no_grad():
+				if step % args.evaluation_step == 0:
+					for source_index in range(n_domains):
+						for source_index_i in range(n_domains):
+							if source_index_i != source_index:
+								acc = test_meta(
+									meta_test[source_index_i][0],
+									meta_test[source_index_i][1],
+									text_list[source_index]
+								)
+								print('source: {} to source {} acc {}'.format(source_index, source_index_i, acc))
+
+			
+			# if step % 50 == 0:
+			# 	print(distance[:,0,:].permute(1,0))
+			
+			# if step % 50 == 0:
+			# 	print(weights.shape)
+			# 	print(weights[:,0,:].permute(1,0))
+
+				# print(running_means)
+				
 			# Pseudo-label
 			logits = 0
 			n_pseudo = 0
@@ -494,12 +565,10 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 			# Source distillation
 			for source_index in range(n_domains):
 				source_txt_features = text_list[source_index]
-				logits +=  weights[source_index] * (target_img_features @ source_txt_features.t())
+				logits +=  target_img_features @ source_txt_features.t()
+				# logits +=  weights[source_index] * (target_img_features @ source_txt_features.t())
+			# logits +=  weights[n_domains] * (target_img_features @ invariant_txt.t())
 			n_pseudo += 1
-
-			logits += target_img_features @ invariant_txt.t()
-			n_pseudo += 1
-			
 			logits /= n_pseudo
 			
 			probs = (scale *logits).softmax(dim=-1).detach()

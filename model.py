@@ -199,6 +199,10 @@ class Custom_Clip(nn.Module):
         text_features = text_features / text_features.norm(dim=-1, keepdim=True)
 
         return text_features
+    
+    def forward_txt_non(self, prompt, tokenized_prompts):
+        text_features = self.text_encoder(prompt, tokenized_prompts)
+        return text_features
 
 
 class AutoEncoder(nn.Module):

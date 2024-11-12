@@ -34,6 +34,16 @@ class PromptGenerator(nn.Module):
             dtype=dtype,
             device=args.device,
         )
+
+        ctx_inv_vector = torch.empty(
+            1,
+            args.M2,
+            embedding_dim,
+            requires_grad=True,
+            dtype=dtype,
+            device=args.device,
+        )
+
         for source_name in source_names:
             ctx_source_vector = torch.empty(
             1,
@@ -54,6 +64,7 @@ class PromptGenerator(nn.Module):
         self.ctx_cls = nn.Parameter(ctx_cls_vector)  # to be optimized
         self.ctx_source = nn.ParameterList(ctx_source_vectors)  # to be optimized
         self.ctx_target = nn.Parameter(ctx_target_vector)  # to be optimized
+        self.ctx_inv = nn.Parameter(ctx_inv_vector)  # to be optimized
 
         classnames = [name.replace("_", " ") for name in classnames]
         prompts = [prompt_prefix + " " + name + "." for name in classnames]
@@ -98,7 +109,7 @@ class PromptGenerator(nn.Module):
         source_prompts = torch.cat(
             [
                 prefix,  # (n_cls, 1, dim)
-                ctx_cls,  # (n_cls, M1, dim)
+                ctx_cls.detach(),  # (n_cls, M1, dim)
                 ctx_source.repeat(self.n_cls, 1, 1),  # (n_cls, 1, dim)
                 suffix,  # (n_cls, *, dim)
             ],
@@ -110,6 +121,7 @@ class PromptGenerator(nn.Module):
     def forward_invariant(self):
         ctx_cls = self.ctx_cls
         ctx_target = self.ctx_target
+        ctx_inv = self.ctx_inv
 
         prefix = self.token_prefix
         suffix = self.token_suffix
@@ -117,7 +129,7 @@ class PromptGenerator(nn.Module):
             [
                 prefix,  # (n_cls, 1, dim)
                 ctx_cls,
-                torch.zeros_like(ctx_target.repeat(self.n_cls, 1, 1)),  # (n_cls, 1, dim)
+                ctx_inv.repeat(self.n_cls, 1, 1),  # (n_cls, 1, dim)
                 suffix,  # (n_cls, *, dim)
             ],
             dim=1,

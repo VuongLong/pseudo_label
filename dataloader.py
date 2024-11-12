@@ -97,6 +97,7 @@ class Pseudolabeldata(Dataset):
 
 def load_data(path, preprocess, args):
     data = datasets.ImageFolder(root=path, transform=preprocess)
+    
     data_loader = torch.utils.data.DataLoader(
         data,
         num_workers=args.num_workers,
@@ -107,6 +108,17 @@ def load_data(path, preprocess, args):
     )
     return data_loader
 
+def load_data_meta(path, preprocess, args, meta_number=500):
+    data = datasets.ImageFolder(root=path, transform=preprocess)
+    data_loader = torch.utils.data.DataLoader(
+        data,
+        num_workers=args.num_workers,
+        batch_size=args.batch_size,
+        shuffle=False,
+        pin_memory=args.pin_memory,
+        drop_last=False,
+    )
+    return data_loader
 
 def load_pseudo_label_data(target_name, path, preprocess, clip_model, args):
     target_pseudo_data = Pseudolabeldata(
