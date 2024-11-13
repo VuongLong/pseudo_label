@@ -304,7 +304,6 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 			target_label = target_label.to(args.device)
 			source_data = source_data.to(args.device)
 			source_label = source_label.to(args.device)
-
 			if target_domain != target_name:
 				continue
 			
