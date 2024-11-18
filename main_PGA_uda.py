@@ -51,11 +51,11 @@ def arg_parse():
 
     # for training settings
     parser.add_argument("--prompt_iteration", type=int, default=5000, help="")
-    parser.add_argument("--prompt_learning_rate", type=float, default=0.003, help="")
-    parser.add_argument("--radius", type=float, default=0.1, help="")
-    parser.add_argument("--align", type=float, default=0.005, help="")
-    parser.add_argument("--tradeoff", type=float, default=0.5, help="")
-    parser.add_argument("--entropy_tradeoff", type=float, default=0.5, help="")
+    parser.add_argument("--prompt_learning_rate", type=float, default=0.0003, help="")
+    parser.add_argument("--radius", type=float, default=0.0001, help="")
+    parser.add_argument("--align", type=float, default=1.0, help="")
+    parser.add_argument("--tradeoff", type=float, default=1.0, help="")
+    parser.add_argument("--entropy_tradeoff", type=float, default=0.0, help="")
 
     return parser
 
@@ -315,6 +315,8 @@ def train(domain_list, classnames, clip_model, preprocess, args):
                 if step % (args.prompt_iteration / 20) == 0:
                     scheduler.step()
 
+                if step%500:
+                    continue
                 prompt_list = [target_prompts]
                 acc = test(
                     target_test_loader,
@@ -351,6 +353,7 @@ def train(domain_list, classnames, clip_model, preprocess, args):
                     best_acc = acc
                 print(f"Best accuracy so far: {best_acc}, step {step}, ensemble accuracy {acc}")
             best_accs.append(best_acc)
+
             print("Best accuracy for each domain:", best_accs, "Average:", np.mean(best_accs))
             print("Number of conflicts:", n_conflict, "Total steps:", args.prompt_iteration, "Conflict rate:", n_conflict/args.prompt_iteration)
             print("Average cosine similarity between gradients:", np.mean(grad_cosine))
@@ -373,7 +376,7 @@ def train(domain_list, classnames, clip_model, preprocess, args):
                     f.write("%s\n" % item)
             # write best accuracy to file #
             with open(f"{tgt_save_path}/best_accuracy.txt", "w") as f:
-                    f.write("%s\n" % best_acc)
+                    f.write("%s\n" % acc)
     
     
     
@@ -404,7 +407,7 @@ def main(args):
     n_cls = len(classnames)
     classnames.sort()
 
-    args.output_dir = "outputs/uda/" + str(args).replace(", ", "/").replace(
+    args.output_dir = "outputs/PGA_uda/" + str(args).replace(", ", "/").replace(
         "'", ""
     ).replace("(", "").replace(")", "").replace("Namespace", "")
 

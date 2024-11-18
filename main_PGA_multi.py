@@ -148,6 +148,7 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 		param.requires_grad_(False)
 	print("Custom_Clip", summary(custom_clip_model))
 	best_accs = []
+	
 	for target_name in domain_list:
 		print("*" * 50)
 		print("Start training on {}".format(target_name))
@@ -159,8 +160,8 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 		tgt_save_path = os.path.join(args.output_dir, target_name)
 		os.makedirs(tgt_save_path, exist_ok=True)
 		result_path = os.path.join(tgt_save_path, "best_accuracy.txt")
-		if os.path.exists(result_path):
-			continue
+		# if os.path.exists(result_path):
+		# 	continue
 		orig_stdout = sys.stdout
 		f = open(tgt_save_path+ "/train.log", "w+")
 		sys.stdout = f
@@ -230,8 +231,8 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 			source_data = source_data.to(args.device)
 			source_label = source_label.to(args.device)
 			source_domain = source_domain.to(args.device)
-			if target_domain != target_name:
-				continue
+			# if target_domain != target_name:
+			# 	continue
 
 			shared_param = prompt_learner.get_shared_param()
 			target_param = prompt_learner.get_target_param()
@@ -378,12 +379,24 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 					if step%10:
 						continue
 			
-			# if step % 50:
-			# 	continue
-			prompt_list = [target_prompts]
+			if step % 100:
+				continue
+
+			acc = test(
+				target_test_loader,
+				custom_clip_model,
+				[target_prompts],
+				tokenized_prompts,
+				args,
+			)
+			print('Target :', acc)
+
+			prompt_list = []
+
 			for source_index in range(len(source_name_list)):
 				source_prompt, _ = prompt_learner(source_index=source_index)
 				prompt_list.append(source_prompt)
+			
 			acc = test(
 				target_test_loader,
 				custom_clip_model,
@@ -391,6 +404,19 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 				tokenized_prompts,
 				args,
 			)
+			print('Source :', acc)
+
+			prompt_list.append(target_prompts)
+
+			acc = test(
+				target_test_loader,
+				custom_clip_model,
+				prompt_list,
+				tokenized_prompts,
+				args,
+			)
+			print('All :', acc)
+
 			pbar.set_description(
 				f"step: {step}, accuracy: {acc}, target total loss: {target_loss.item()}, classification: {target_cls_loss.item()}, entropy: {target_entropy_loss.item()}"
 			)
@@ -454,7 +480,7 @@ def main(args):
 	n_cls = len(classnames)
 	classnames.sort()
 
-	args.output_dir = "outputs1/rebuttal/multi/" + str(args).replace(", ", "/").replace(
+	args.output_dir = "outputs/GPA_multi_OH/" + str(args).replace(", ", "/").replace(
 		"'", ""
 	).replace("(", "").replace(")", "").replace("Namespace", "")
 

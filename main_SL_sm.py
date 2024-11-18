@@ -58,10 +58,13 @@ def arg_parse():
 	parser.add_argument("--prompt_learning_rate", type=float, default=0.003, help="")
 	parser.add_argument("--ot_t_weight", type=float, default=0.5, help="")
 	parser.add_argument("--t_weight", type=float, default=0.5, help="")
-
-	parser.add_argument("--output_dir", type=str, default="outputs", help="")
-	parser.add_argument("--self_correct", type=int, default=1, help="")
+	parser.add_argument("--w_scale", type=float, default=10, help="")
 	parser.add_argument("--evaluation_step", type=int, default=50, help="")
+	parser.add_argument("--output_dir", type=str, default="outputs", help="")
+
+	parser.add_argument("--self_correct", type=int, default=1, help="")
+	parser.add_argument("--pseudo_label", type=int, default=1, help="")
+	parser.add_argument("--entropy_tradeoff", type=float, default=0.0, help="")
 
 
 
@@ -185,6 +188,13 @@ def soft_cross_entropy_loss(predictions, soft_targets):
 	loss = -torch.sum(soft_targets * log_probs, dim=1).mean()
 	return loss
 
+def calc_distance(A, B):
+	distances = (torch.sum(A**2, dim=1, keepdim=True) 
+				+ torch.sum(B**2, dim=1)
+				- 2 * torch.matmul(A, B.t()))
+
+	return distances
+
 def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 	n_cls = len(classnames)
 	custom_clip_model = Custom_Clip(clip_model)
@@ -205,6 +215,8 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 	print('feature_dim', feature_dim)
 
 	for target_name in domain_list:
+		# if target_domain != target_name and args.dataset == "DomainNet":
+		# 	continue
 		print("*" * 50)
 		print("Start training on {}".format(target_name))
 		if target_domain == target_name:
@@ -260,11 +272,16 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 
 		scale = custom_clip_model.logit_scale.exp()
 		prompt_learner = PromptGenerator(
-			classnames, clip_model, source_name_list, target_name, args
+			classnames, clip_model, source_name_list, target_name, args, feature_dim
 		)
 		print("PromptGenerator", summary(prompt_learner))
 		tokenized_prompts = prompt_learner.tokenized_prompts
 
+		if target_domain == target_name:
+			torch.save({
+				'prompt': prompt_learner.state_dict()}, 
+				os.path.join(args.output_dir, 'last.pth'))
+			
 		optimizer = torch.optim.AdamW(
 			list(prompt_learner.parameters()), 
 			lr=args.prompt_learning_rate
@@ -367,38 +384,59 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 			)
 			target_logits = target_img_features @ target_txt_features.t()
 
-			# Using pseudo-label
-			with torch.no_grad():
-				image_features, text_features = clip_model(target_data, text)
-				logits = image_features @ text_features.t()
-				n_pseudo = 1
-			
-			# Using pseudo-label from source-domains
-
-			distance = torch.zeros(running_means.shape[0], target_img_features.shape[0], n_cls).to(args.device)
-			for source_index in range(running_means.shape[0]):
-				# distance[source_index] = calc_distance(features, running_means[source_index])
-				#weights = nn.Softmax(dim=0)(-distance*args.w_scale).detach()
-				distance[source_index] = features @ running_means[source_index].t()
-				weights = nn.Softmax(dim=0)(distance*args.w_scale).detach()
-
-			logits += target_img_features @ source_txt_features.t()
-			n_pseudo += 1
-
-			for source_index in range(n_domains):
-				source_txt_features_idx = text_list[source_index]
-				# logits +=  weights[source_index] * (target_img_features @ source_txt_features.t())
-				logits +=  (1/n_domains) * (target_img_features @ source_txt_features_idx.t())
-			n_pseudo += 1
-			
-			logits /= n_pseudo
-
-			
+			if args.pseudo_label == 1:
+				# Using pseudo-label
+				with torch.no_grad():
+					_, text_features = clip_model(target_data, text)
+					logits = target_img_features @ text_features.t()
+					n_pseudo = 1
 				
-			probs = (scale *logits).softmax(dim=-1).detach()
-			target_cls_loss = soft_cross_entropy_loss(scale * target_logits, probs)
-			n_target = 1
+				# Using pseudo-label from source-domains
+				if (running_count>0).sum().sum() == running_count.shape[0]*running_count.shape[1]:
+					
+					# distance = torch.zeros(running_means.shape[0], target_img_features.shape[0], n_cls).to(args.device)
+					# for source_index in range(running_means.shape[0]):
+					# 	domain_class_feature = running_means[source_index]
+					# 	distance[source_index] = target_img_features @ domain_class_feature.t()
+					# weights = nn.Softmax(dim=0)(distance*args.w_scale).detach()
+
+
+					distance = torch.zeros(running_means.shape[0], target_img_features.shape[0], n_cls).to(args.device)
+					for source_index in range(running_means.shape[0]):
+						distance[source_index] = calc_distance(target_features, running_means[source_index])
+					weights = nn.Softmax(dim=0)(-distance*args.w_scale).detach()
+
+					# for source_index in range(n_domains):
+					# 	source_txt_features_idx = text_list[source_index]
+					# 	logits +=  weights[source_index] * (target_img_features @ source_txt_features.t())
+
+					for source_index in range(n_domains):
+						source_txt_features_idx = text_list[source_index]
+						logits +=  (1/n_domains) * (target_img_features @ source_txt_features_idx.t())
+					n_pseudo += 1
+
+				else:
+					print((running_count>0).sum())
+
+				# invariant
+				logits += target_img_features @ source_txt_features.t()
+				n_pseudo += 1
 			
+				logits /= n_pseudo
+				probs = (scale *logits).softmax(dim=-1).detach()
+				target_cls_loss = soft_cross_entropy_loss(scale * target_logits, probs)
+				n_target = 1
+			else:
+				# cross entropy loss for those that have non -1 labels
+				target_cls_loss = F.cross_entropy(
+					target_logits[target_label != -1], target_label[target_label != -1]
+				)
+				n_target = 1
+			
+			if args.entropy_tradeoff > 0:
+				target_entropy_loss = entropy_loss(target_logits[target_label == -1])
+				total_loss +=  args.entropy_tradeoff * target_entropy_loss
+
 			# Self-Correction
 			if args.self_correct == 1:
 				pseudo_label = target_logits.max(1)[1]
@@ -406,18 +444,22 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 					scale * target_logits, pseudo_label
 				)
 				n_target += 1
+
+				target_metric = 1 - target_logits
+				BTI = target_img_features.shape[0]
+				BTT = target_txt_features.shape[0]
+				sample_weight_i = torch.ones(BTI).to(source_img_features.device) / BTI
+				sample_weight_t = torch.ones(BTT).to(source_img_features.device) / BTT
+				t_ot_cost = ot.emd2(sample_weight_i, sample_weight_t, target_metric, numItermax=500000)
+				total_loss += args.ot_t_weight * t_ot_cost
+
+			
+			
 			target_loss = target_cls_loss / n_target
 			
 			total_loss += args.t_weight * target_loss
 			
-			target_metric = 1 - target_logits
-			BTI = target_img_features.shape[0]
-			BTT = target_txt_features.shape[0]
-			sample_weight_i = torch.ones(BTI).to(source_img_features.device) / BTI
-			sample_weight_t = torch.ones(BTT).to(source_img_features.device) / BTT
-			t_ot_cost = ot.emd2(sample_weight_i, sample_weight_t, target_metric, numItermax=500000)
-			total_loss += args.ot_t_weight * t_ot_cost
-
+			
 			total_loss.backward()
 			optimizer.step()
 
@@ -426,20 +468,35 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 
 			if args.dataset == "DomainNet":
 				if step < 3000:
-					if step% 500:
-						continue
+					continue
 				else:
 					if step% args.evaluation_step:
 						continue
 
 			if args.dataset == "DomainNet":
 				if step > 3000:
-					mean_target_txt_features += target_txt_features
-					mean_count +=1
+					# mean_target_txt_features += target_txt_features
+					# mean_count +=1
+					prompt_learner.features[-1] += target_txt_features 
+					prompt_learner.features[-2] += source_txt_features 
+					prompt_learner.count[-1] += 1
+					prompt_learner.count[-2] += 1
+					for source_index in range(n_domains):
+						prompt_learner.features[source_index] += text_list[source_index] 
+						prompt_learner.count[source_index] += 1
+
 			else:
 				if step > 100:
-					mean_target_txt_features += target_txt_features
-					mean_count +=1
+					prompt_learner.features[-1] += target_txt_features 
+					prompt_learner.features[-2] += source_txt_features
+					prompt_learner.count[-1] += 1
+					prompt_learner.count[-2] += 1
+					for source_index in range(n_domains):
+						prompt_learner.features[source_index] += text_list[source_index] 
+						prompt_learner.count[source_index] += 1
+
+					# mean_target_txt_features += target_txt_features
+					# mean_count +=1
 
 			if step% args.evaluation_step:
 				continue
@@ -464,10 +521,14 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 		if target_domain != target_name:
 			continue
 
+		torch.save({
+			'prompt': prompt_learner.state_dict()}, 
+			os.path.join(args.output_dir, 'last.pth'))
+
 		source_acc = test_w(
 			target_test_loader,
 			custom_clip_model,
-			mean_target_txt_features/mean_count,
+			prompt_learner.features[-1]/prompt_learner.count[-1],
 			tokenized_prompts,
 			args,
 		)
@@ -491,10 +552,18 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 			)
 		print('Combined Inv + Target: ', acc)
 
-		prompt_list = [source_prompts]
+		prompt_list = []
 			
 		for source_index in range(n_domains):
 			source_prompt_idx = prompt_learner.forward_source(source_index=source_index)
+			acc = test(
+				target_test_loader,
+				custom_clip_model,
+				[source_prompt_idx],
+				tokenized_prompts,
+				args,
+			)
+			print('source: ', source_index, ': ', acc)
 			prompt_list.append(source_prompt_idx)
 
 		acc = test(
@@ -504,26 +573,41 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 				tokenized_prompts,
 				args,
 			)
-		print('Combined Inv + soruce: ', acc)
+		print('Combined source: ', acc)
 
-		prompt_list.append(target_prompts)
 		acc = test(
 				target_test_loader,
 				custom_clip_model,
-				prompt_list,
+				prompt_list + [source_prompts],
 				tokenized_prompts,
 				args,
 			)
+		print('Combined Inv + source: ', acc)
+
+		acc = test(
+				target_test_loader,
+				custom_clip_model,
+				prompt_list + [target_prompts],
+				tokenized_prompts,
+				args,
+			)
+
+		print('Combined target + source: ', acc)
+		
+		acc = test(
+				target_test_loader,
+				custom_clip_model,
+				prompt_list + [source_prompts, target_prompts],
+				tokenized_prompts,
+				args,
+			)
+
 		print('All: ', acc)
 
 		best_accs.append(best_acc)
 		print("Best accuracy for each domain:", best_accs, "Average:", np.mean(best_accs))
 		sys.stdout = orig_stdout
 		f.close()
-
-			
-	
-	
 	
 def fix_random_seed(seed_value):
 	random.seed(seed_value)

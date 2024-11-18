@@ -109,7 +109,7 @@ class PromptGenerator(nn.Module):
         source_prompts = torch.cat(
             [
                 prefix,  # (n_cls, 1, dim)
-                ctx_cls.detach(),  # (n_cls, M1, dim)
+                ctx_cls,  # (n_cls, M1, dim)
                 ctx_source.repeat(self.n_cls, 1, 1),  # (n_cls, 1, dim)
                 suffix,  # (n_cls, *, dim)
             ],
@@ -222,7 +222,7 @@ class Custom_Clip(nn.Module):
         text_features = self.text_encoder(prompt, tokenized_prompts)
         text_features = text_features / text_features.norm(dim=-1, keepdim=True)
 
-        return norm_image_features, text_features, image_features
+        return norm_image_features, text_features
 
     def forward_img(self, image):
         image_features = self.image_encoder(image)

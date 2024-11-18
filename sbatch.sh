@@ -16,6 +16,6 @@
 source activate /home/long/envs
 set -x
 
-python main_SL_sm.py --M1 16 --M2 16 --threshold .4 --data_root /home/shared/data/DomainBed/ --dataset ${1} --target ${2}  --output_dir OH_multi_sm_2_no_detach_weight/ --ot_t_weight 0.5 --t_weight 0.5 --self_correct 1 --evaluation_step 100 --prompt_learning_rate 0.005
+python main_sm_supervised.py --M1 16 --M2 16 --threshold .4 --data_root /home/shared/data/DomainBed/ --dataset ${1} --target ${2}  --output_dir Ablation_OH_multi_superviseds/ --evaluation_step 200 --prompt_learning_rate 0.005 --t_weight 0.0 --pseudo_label 0 --entropy_tradeoff 0.0 --self_correct 0
 
 # python main_SL_multi_weighted_domain_class.py --M1 16 --M2 16 --threshold .4 --data_root /home/shared/data/DomainBed/ --dataset ${1} --target ${2}  --output_dir ablation_OH_multi/ --ot_t_weight 0.5 --t_weight 0.5 --self_correct 1 --evaluation_step 100 --prompt_learning_rate 0.005

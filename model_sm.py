@@ -11,11 +11,15 @@ from einops import rearrange
 
 
 class PromptGenerator(nn.Module):
-    def __init__(self, classnames, clip_model, source_names, target_name, args):
+    def __init__(self, classnames, clip_model, source_names, target_name, args, feature_dim=1024):
         super().__init__()
         n_cls = len(classnames)
         dtype = torch.float32
         embedding_dim = clip_model.ln_final.weight.shape[0]
+
+        self.register_buffer('features', torch.zeros(len(source_names)+2, len(classnames), feature_dim, device=args.device))
+        self.register_buffer('count', torch.zeros(len(source_names)+2, device=args.device))
+
         ctx_cls_vector = torch.empty(
             n_cls,
             args.M1,
@@ -133,50 +137,7 @@ class PromptGenerator(nn.Module):
         )      
         return source_prompts
 
-    def get_source_grad(self, source_index, zero_grad=True):
-        grad = self.ctx_source[source_index].grad.data.clone().flatten()
-        if zero_grad:
-            self.ctx_source[source_index].grad.zero_()
-        return grad
 
-    def set_source_grad(self, source_index, grad):
-        self.ctx_source[source_index].grad = grad.data.clone().reshape(self.ctx_source[source_index].shape)
-
-    def get_target_grad(self, zero_grad=True):
-        grad = self.ctx_target.grad.data.clone().flatten()
-        if zero_grad:
-            self.ctx_target.grad.zero_()
-        return grad
-
-    def set_target_grad(self, grad):
-        self.ctx_target.grad = grad.data.clone().reshape(self.ctx_target.shape)
-
-    def get_shared_grad(self, zero_grad=True):
-        grad = self.ctx_cls.grad.data.clone().flatten()
-        if zero_grad:
-            self.ctx_cls.grad.zero_()
-        return grad
-
-    def set_shared_grad(self, grad):
-        self.ctx_cls.grad = grad.data.clone().reshape(self.ctx_cls.shape)
-
-    def get_source_param(self, source_index):
-        return self.ctx_source[source_index].data.clone().flatten()
-
-    def set_source_param(self, source_index, params):
-        self.ctx_source[source_index].data = params.data.clone().reshape(self.ctx_source[source_index].shape)
-
-    def get_target_param(self):
-        return self.ctx_target.data.clone().flatten()
-
-    def set_target_param(self, params):
-        self.ctx_target.data = params.data.clone().reshape(self.ctx_target.shape)
-
-    def get_shared_param(self):
-        return self.ctx_cls.data.clone().flatten()
-
-    def set_shared_param(self, params):
-        self.ctx_cls.data = params.data.clone().reshape(self.ctx_cls.shape)
 
 
 class TextEncoder(nn.Module):

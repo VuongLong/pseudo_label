@@ -53,10 +53,10 @@ def arg_parse():
 	# for training settings
 	parser.add_argument("--prompt_iteration", type=int, default=5000, help="")
 	parser.add_argument("--prompt_learning_rate", type=float, default=0.003, help="")
-	parser.add_argument("--radius", type=float, default=0.1, help="")
-	parser.add_argument("--align", type=float, default=0.005, help="")
+	parser.add_argument("--radius", type=float, default=0.0003, help="")
+	parser.add_argument("--align", type=float, default=10.0, help="")
 	parser.add_argument("--tradeoff", type=float, default=0.5, help="")
-	parser.add_argument("--entropy_tradeoff", type=float, default=0.5, help="")
+	parser.add_argument("--entropy_tradeoff", type=float, default=0.0, help="")
 	parser.add_argument("--K", type=int, default=1, help="")
 
 	return parser
@@ -156,8 +156,7 @@ def train(domain_list, classnames, clip_model, preprocess, args):
 	best_accs = []
 	
 	for target_name in domain_list:
-		if target_name != 'Clipart':
-			continue
+		
 		print("*" * 50)
 		print("Start training on {}".format(target_name))
 		# if args.dataset == "DomainNet":
@@ -446,7 +445,7 @@ def main(args):
 	n_cls = len(classnames)
 	classnames.sort()
 
-	args.output_dir = "outputs/rebuttal/single/" + str(args).replace(", ", "/").replace(
+	args.output_dir = "outputs/GPA_CLEF/" + str(args).replace(", ", "/").replace(
 		"'", ""
 	).replace("(", "").replace(")", "").replace("Namespace", "")
 
