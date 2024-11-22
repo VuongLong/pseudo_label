@@ -1,0 +1,166 @@
+['Art', 'Clipart', 'RealWorld']
+Product
+Generating pseudo labels for Product data
+pseudo label correct rate is 0.8170759179995495
+Mean per class correct rate is 0.8089185111750484
+pseudo label accuracy for Alarm_Clock is 0.9873417721518988
+pseudo label accuracy for Backpack is 0.9797979797979798
+pseudo label accuracy for Batteries is 0.9032258064516129
+pseudo label accuracy for Bed is 0.9767441860465116
+pseudo label accuracy for Bike is 0.9772727272727273
+pseudo label accuracy for Bottle is 0.5645161290322581
+pseudo label accuracy for Bucket is 0.8085106382978723
+pseudo label accuracy for Calculator is 1.0
+pseudo label accuracy for Calendar is 0.9135802469135802
+pseudo label accuracy for Candles is 0.9285714285714286
+pseudo label accuracy for Chair is 0.8383838383838383
+pseudo label accuracy for Clipboards is 0.4307692307692308
+pseudo label accuracy for Computer is 0.6666666666666666
+pseudo label accuracy for Couch is 0.9318181818181818
+pseudo label accuracy for Curtains is 0.9066666666666666
+pseudo label accuracy for Desk_Lamp is 0.7590361445783133
+pseudo label accuracy for Drill is 0.9253731343283582
+pseudo label accuracy for Eraser is 0.7317073170731707
+pseudo label accuracy for Exit_Sign is 0.9850746268656716
+pseudo label accuracy for Fan is 0.8275862068965517
+pseudo label accuracy for File_Cabinet is 0.971830985915493
+pseudo label accuracy for Flipflops is 0.9595959595959596
+pseudo label accuracy for Flowers is 1.0
+pseudo label accuracy for Folder is 0.5333333333333333
+pseudo label accuracy for Fork is 0.8536585365853658
+pseudo label accuracy for Glasses is 0.9701492537313433
+pseudo label accuracy for Hammer is 0.5614035087719298
+pseudo label accuracy for Helmet is 0.9111111111111111
+pseudo label accuracy for Kettle is 0.9861111111111112
+pseudo label accuracy for Keyboard is 0.9797979797979798
+pseudo label accuracy for Knives is 0.8780487804878049
+pseudo label accuracy for Lamp_Shade is 0.5185185185185185
+pseudo label accuracy for Laptop is 0.9393939393939394
+pseudo label accuracy for Marker is 0.125
+pseudo label accuracy for Monitor is 0.9795918367346939
+pseudo label accuracy for Mop is 0.7777777777777778
+pseudo label accuracy for Mouse is 0.5208333333333334
+pseudo label accuracy for Mug is 0.8536585365853658
+pseudo label accuracy for Notebook is 0.6989247311827957
+pseudo label accuracy for Oven is 1.0
+pseudo label accuracy for Pan is 0.8714285714285714
+pseudo label accuracy for Paper_Clip is 0.9148936170212766
+pseudo label accuracy for Pen is 0.8166666666666667
+pseudo label accuracy for Pencil is 0.65
+pseudo label accuracy for Postit_Notes is 0.7894736842105263
+pseudo label accuracy for Printer is 0.98989898989899
+pseudo label accuracy for Push_Pin is 0.813953488372093
+pseudo label accuracy for Radio is 0.7441860465116279
+pseudo label accuracy for Refrigerator is 0.8135593220338984
+pseudo label accuracy for Ruler is 0.9137931034482759
+pseudo label accuracy for Scissors is 0.9292929292929293
+pseudo label accuracy for Screwdriver is 0.9
+pseudo label accuracy for Shelf is 0.32653061224489793
+pseudo label accuracy for Sink is 0.9565217391304348
+pseudo label accuracy for Sneakers is 0.8080808080808081
+pseudo label accuracy for Soda is 0.813953488372093
+pseudo label accuracy for Speaker is 0.6464646464646465
+pseudo label accuracy for Spoon is 0.723404255319149
+pseudo label accuracy for TV is 0.6052631578947368
+pseudo label accuracy for Table is 0.8666666666666667
+pseudo label accuracy for Telephone is 0.39655172413793105
+pseudo label accuracy for ToothBrush is 0.9523809523809523
+pseudo label accuracy for Toys is 0.7333333333333333
+pseudo label accuracy for Trash_Can is 0.6236559139784946
+pseudo label accuracy for Webcam is 0.9183673469387755
+Data statistic {'Art': 2427, 'Clipart': 4365, 'RealWorld': 4357}
+=================================================================
+Layer (type:depth-idx)                   Param #
+=================================================================
+PromptGenerator                          548,864
+├─ParameterList: 1-1                     24,576
+=================================================================
+Total params: 573,440
+Trainable params: 573,440
+Non-trainable params: 0
+=================================================================
+PromptGenerator =================================================================
+Layer (type:depth-idx)                   Param #
+=================================================================
+PromptGenerator                          548,864
+├─ParameterList: 1-1                     24,576
+=================================================================
+Total params: 573,440
+Trainable params: 573,440
+Non-trainable params: 0
+=================================================================
+name: ctx_cls, shape torch.Size([65, 16, 512]), require grad: True
+name: ctx_target, shape torch.Size([1, 16, 512]), require grad: True
+name: ctx_inv, shape torch.Size([1, 16, 512]), require grad: True
+name: ctx_source.0, shape torch.Size([1, 16, 512]), require grad: True
+name: ctx_source.1, shape torch.Size([1, 16, 512]), require grad: True
+name: ctx_source.2, shape torch.Size([1, 16, 512]), require grad: True
+tensor(27, device='cuda:0')
+tensor(51, device='cuda:0')
+tensor(69, device='cuda:0')
+tensor(88, device='cuda:0')
+tensor(104, device='cuda:0')
+tensor(112, device='cuda:0')
+tensor(123, device='cuda:0')
+tensor(131, device='cuda:0')
+tensor(135, device='cuda:0')
+tensor(147, device='cuda:0')
+tensor(151, device='cuda:0')
+tensor(157, device='cuda:0')
+tensor(163, device='cuda:0')
+tensor(167, device='cuda:0')
+tensor(173, device='cuda:0')
+tensor(176, device='cuda:0')
+tensor(178, device='cuda:0')
+tensor(179, device='cuda:0')
+tensor(180, device='cuda:0')
+tensor(181, device='cuda:0')
+tensor(183, device='cuda:0')
+tensor(186, device='cuda:0')
+tensor(188, device='cuda:0')
+tensor(189, device='cuda:0')
+tensor(189, device='cuda:0')
+tensor(190, device='cuda:0')
+tensor(191, device='cuda:0')
+tensor(191, device='cuda:0')
+tensor(191, device='cuda:0')
+tensor(191, device='cuda:0')
+tensor(192, device='cuda:0')
+tensor(192, device='cuda:0')
+tensor(192, device='cuda:0')
+tensor(192, device='cuda:0')
+tensor(192, device='cuda:0')
+tensor(193, device='cuda:0')
+tensor(193, device='cuda:0')
+tensor(194, device='cuda:0')
+tensor(194, device='cuda:0')
+tensor(194, device='cuda:0')
+tensor(194, device='cuda:0')
+tensor(194, device='cuda:0')
+tensor(194, device='cuda:0')
+tensor(194, device='cuda:0')
+tensor(194, device='cuda:0')
+tensor(194, device='cuda:0')
+tensor(194, device='cuda:0')
+tensor(194, device='cuda:0')
+tensor(194, device='cuda:0')
+tensor(194, device='cuda:0')
+tensor(194, device='cuda:0')
+tensor(194, device='cuda:0')
+tensor(194, device='cuda:0')
+Best accuracy so far: 0.861904761904762, step 200, target accuracy 0.861904761904762
+Best accuracy so far: 0.861904761904762, step 400, target accuracy 0.8492063492063492
+Best accuracy so far: 0.861904761904762, step 600, target accuracy 0.844671201814059
+Best accuracy so far: 0.861904761904762, step 800, target accuracy 0.8514739229024944
+Best accuracy so far: 0.861904761904762, step 1000, target accuracy 0.8494331065759637
+average_weight:  0.8653061224489796
+Invariant:  0.8251700680272109
+Combined Inv + Target:  0.8410430839002268
+source:  0 :  0.8011337868480726
+source:  1 :  0.816780045351474
+source:  2 :  0.8405895691609977
+Combined source:  0.8356009070294784
+Combined Inv + source:  0.8356009070294784
+Combined target + source:  0.8408163265306122
+All:  0.8414965986394558
+Best accuracy for each domain: [0.861904761904762] Average: 0.861904761904762

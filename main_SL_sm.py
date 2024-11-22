@@ -215,8 +215,6 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 	print('feature_dim', feature_dim)
 
 	for target_name in domain_list:
-		# if target_domain != target_name and args.dataset == "DomainNet":
-		# 	continue
 		print("*" * 50)
 		print("Start training on {}".format(target_name))
 		if target_domain == target_name:
@@ -383,13 +381,14 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 				target_data, target_prompts, tokenized_prompts
 			)
 			target_logits = target_img_features @ target_txt_features.t()
-
 			if args.pseudo_label == 1:
 				# Using pseudo-label
-				with torch.no_grad():
-					_, text_features = clip_model(target_data, text)
-					logits = target_img_features @ text_features.t()
-					n_pseudo = 1
+				logits = 0
+				n_pseudo = 1
+				# with torch.no_grad():
+				# 	_, text_features = clip_model(target_data, text)
+				# 	logits += target_img_features @ text_features.t()
+				# 	n_pseudo += 1
 				
 				# Using pseudo-label from source-domains
 				if (running_count>0).sum().sum() == running_count.shape[0]*running_count.shape[1]:
@@ -406,17 +405,18 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 						distance[source_index] = calc_distance(target_features, running_means[source_index])
 					weights = nn.Softmax(dim=0)(-distance*args.w_scale).detach()
 
-					# for source_index in range(n_domains):
-					# 	source_txt_features_idx = text_list[source_index]
-					# 	logits +=  weights[source_index] * (target_img_features @ source_txt_features.t())
-
 					for source_index in range(n_domains):
 						source_txt_features_idx = text_list[source_index]
-						logits +=  (1/n_domains) * (target_img_features @ source_txt_features_idx.t())
-					n_pseudo += 1
+						logits +=  weights[source_index] * (target_img_features @ source_txt_features.t())
 
+					
 				else:
 					print((running_count>0).sum())
+					# for source_index in range(n_domains):
+					# 	source_txt_features_idx = text_list[source_index]
+					# 	logits +=  (1/n_domains) * (target_img_features @ source_txt_features_idx.t())
+					# n_pseudo += 1
+
 
 				# invariant
 				logits += target_img_features @ source_txt_features.t()
@@ -642,7 +642,7 @@ def main(args):
 	n_cls = len(classnames)
 	classnames.sort()
 
-	args.output_dir = 'outputs/'+ args.output_dir + str(args).replace(", ", "/").replace(
+	args.output_dir = 'outputs_ablation/'+ args.output_dir + str(args).replace(", ", "/").replace(
 		"'", ""
 	).replace("(", "").replace(")", "").replace("Namespace", "")
 

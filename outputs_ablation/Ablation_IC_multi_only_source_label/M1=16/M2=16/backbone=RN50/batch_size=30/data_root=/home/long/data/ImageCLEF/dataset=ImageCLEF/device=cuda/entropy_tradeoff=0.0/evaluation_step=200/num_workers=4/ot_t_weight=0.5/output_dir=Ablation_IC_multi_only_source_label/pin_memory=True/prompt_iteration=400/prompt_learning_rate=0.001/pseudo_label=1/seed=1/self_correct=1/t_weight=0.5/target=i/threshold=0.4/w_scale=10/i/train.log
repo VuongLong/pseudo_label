@@ -1,0 +1,59 @@
+['p', 'c', 'b']
+i
+Generating pseudo labels for i data
+pseudo label correct rate is 0.8816666666666667
+Mean per class correct rate is 0.8816666666666667
+pseudo label accuracy for aeroplane is 0.98
+pseudo label accuracy for bike is 0.84
+pseudo label accuracy for bird is 0.88
+pseudo label accuracy for boat is 0.9
+pseudo label accuracy for boele is 0.78
+pseudo label accuracy for bus is 1.0
+pseudo label accuracy for car is 0.96
+pseudo label accuracy for dog is 0.86
+pseudo label accuracy for horse is 0.96
+pseudo label accuracy for monitor is 0.94
+pseudo label accuracy for motorbike is 0.98
+pseudo label accuracy for people is 0.5
+Data statistic {'p': 600, 'c': 600, 'b': 600}
+=================================================================
+Layer (type:depth-idx)                   Param #
+=================================================================
+PromptGenerator                          114,688
+├─ParameterList: 1-1                     24,576
+=================================================================
+Total params: 139,264
+Trainable params: 139,264
+Non-trainable params: 0
+=================================================================
+PromptGenerator =================================================================
+Layer (type:depth-idx)                   Param #
+=================================================================
+PromptGenerator                          114,688
+├─ParameterList: 1-1                     24,576
+=================================================================
+Total params: 139,264
+Trainable params: 139,264
+Non-trainable params: 0
+=================================================================
+name: ctx_cls, shape torch.Size([12, 16, 512]), require grad: True
+name: ctx_target, shape torch.Size([1, 16, 512]), require grad: True
+name: ctx_inv, shape torch.Size([1, 16, 512]), require grad: True
+name: ctx_source.0, shape torch.Size([1, 16, 512]), require grad: True
+name: ctx_source.1, shape torch.Size([1, 16, 512]), require grad: True
+name: ctx_source.2, shape torch.Size([1, 16, 512]), require grad: True
+tensor(20, device='cuda:0')
+tensor(35, device='cuda:0')
+Best accuracy so far: 0.9666666666666667, step 200, target accuracy 0.9666666666666667
+Best accuracy so far: 0.9666666666666667, step 400, target accuracy 0.9533333333333334
+average_weight:  0.965
+Invariant:  0.9166666666666666
+Combined Inv + Target:  0.9366666666666666
+source:  0 :  0.8916666666666667
+source:  1 :  0.9066666666666666
+source:  2 :  0.8966666666666666
+Combined source:  0.945
+Combined Inv + source:  0.945
+Combined target + source:  0.95
+All:  0.955
+Best accuracy for each domain: [0.9666666666666667] Average: 0.9666666666666667
