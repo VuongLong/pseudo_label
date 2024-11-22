@@ -2,5 +2,6 @@
 __pycache__/
 checkpoint_path/
 outputs/
+outputs_ablation/
 log/
 log_err/
