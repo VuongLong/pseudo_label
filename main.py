@@ -122,26 +122,6 @@ def args_update(args):
 		args.prompt_iteration = 1000
 
 
-# def test(target_test_loader, custom_clip_model, txt_feature, args):
-# 	scale = custom_clip_model.logit_scale.exp()
-
-# 	correct = 0
-# 	tot = 0
-# 	with torch.no_grad():
-# 		for data, label in target_test_loader:
-# 			tot += args.batch_size
-# 			data = data.to(args.device)
-# 			label = label.to(args.device)
-
-# 			tot_logits = 0
-# 			img_feature = custom_clip_model.forward_img(data)
-# 			logits = img_feature @ txt_feature.t()
-# 			tot_logits += logits
-# 			output = torch.argmax(tot_logits, dim=1) # % n_cls
-# 			correct += (output == label).sum().item()
-
-# 	return correct / tot
-
 def test(target_test_loader, custom_clip_model, text_embeddings, args):
 	scale = custom_clip_model.logit_scale.exp()
 
@@ -222,20 +202,6 @@ def train(domain_list, classnames, clip_model, preprocess, args):
 
 		target_path = os.path.join(args.data_root, target_name)
 
-		# if args.enhanced_pseudo_label == 1:
-		# 	target_train_dataset = SingleSourceDataset(
-		# 		args.data_root, [target_name], preprocess
-		# 	)
-		# 	target_train_loader = torch.utils.data.DataLoader(
-		# 		target_train_dataset,
-		# 		batch_size=args.batch_size,
-		# 		num_workers=4,
-		# 		pin_memory=True,
-		# 	)	
-		# else:
-		# 	target_train_loader = load_pseudo_label_data(
-		# 		target_name, target_path, preprocess, clip_model, args
-		# 	)
 		target_train_loader = load_pseudo_label_data(
 			target_name, target_path, preprocess, clip_model, args
 		)
@@ -373,7 +339,6 @@ def train(domain_list, classnames, clip_model, preprocess, args):
 				n_pseudo = 0
 
 				# CLIP zero-shot prediction
-				# with torch.no_grad():
 				_, base_text_features = clip_model(target_data, text)
 				logits += target_img_features @ base_text_features.t()
 				n_pseudo += 1
@@ -421,13 +386,15 @@ def train(domain_list, classnames, clip_model, preprocess, args):
 				sample_weight_i = torch.ones(BTI).to(source_img_features.device) / BTI
 				sample_weight_t = torch.ones(BTT).to(source_img_features.device) / BTT
 				t_ot_cost = ot.emd2(sample_weight_i, sample_weight_t, cost_metric, numItermax=500000)
-				total_loss += args.ot_t_weight * t_ot_cost
 
 				pseudo_label = cost_metric.min(1)[1]
 				target_cls_loss += F.cross_entropy(
 					scale * target_logits, pseudo_label
 				)
 				n_target += 1
+
+				total_loss += args.ot_t_weight * t_ot_cost
+
 			
 			target_loss = target_cls_loss / n_target
 			
@@ -444,34 +411,9 @@ def train(domain_list, classnames, clip_model, preprocess, args):
 				if step < 3000:
 					continue
 
-			# if step > 100:
 			if loss_valley.is_converged:
-				prompt_learner.features[-1] += target_txt_features 
-				prompt_learner.features[-2] += source_txt_features 
-				prompt_learner.count[-1] += 1
-				prompt_learner.count[-2] += 1
-			# 	if step == loss_valley.converged_step:
-			# 		acc = test(
-			# 			target_test_loader,
-			# 			custom_clip_model,
-			# 			[target_txt_features],
-			# 			args,
-			# 		)
-			# 		print('converged step: ', acc)
-			# else:
-			# 	acc = test(
-			# 			target_test_loader,
-			# 			custom_clip_model,
-			# 			[target_txt_features],
-			# 			args,
-			# 		)
-			# 	print('Step: ', acc)
-
-				# if args.training_mode =='multi-source':
-				# 	for source_index in range(n_domains):
-				# 		prompt_learner.features[source_index] += text_list[source_index] 
-				# 		prompt_learner.count[source_index] += 1
-
+				prompt_learner.store_txt_features(target_txt_features)
+				
 			if step % args.evaluation_step:
 				continue
 			
@@ -497,11 +439,10 @@ def train(domain_list, classnames, clip_model, preprocess, args):
 		acc = test(
 			target_test_loader,
 			custom_clip_model,
-			[prompt_learner.features[-1]/prompt_learner.count[-1]],
+			[prompt_learner.target_features],
 			args,
 		)
-		print('average_weight: ', acc)
-
+		print('final_accuracy: ', acc)
 
 		last_accs.append(acc)
 		print("Last accuracy for each domain:", last_accs, "Average:", np.mean(last_accs))
@@ -513,12 +454,12 @@ def fix_random_seed(seed_value):
 	np.random.seed(seed_value)
 	torch.manual_seed(seed_value)
 
-	# if torch.cuda.is_available():
-	torch.cuda.manual_seed_all(seed_value)
-	torch.cuda.manual_seed(seed_value)
-	torch.backends.cudnn.enabled = False
-	torch.backends.cudnn.benchmark = False
-	torch.backends.cudnn.deterministic = True
+	if torch.cuda.is_available():
+		torch.cuda.manual_seed_all(seed_value)
+		torch.cuda.manual_seed(seed_value)
+		torch.backends.cudnn.enabled = False
+		torch.backends.cudnn.benchmark = False
+		torch.backends.cudnn.deterministic = True
 	
 
 def main(args):
@@ -541,7 +482,7 @@ def main(args):
 	n_cls = len(classnames)
 	classnames.sort()
 
-	args.output_dir = 'outputs_debug1/'+ args.output_dir + str(args).replace(", ", "/").replace(
+	args.output_dir = args.output_dir + str(args).replace(", ", "/").replace(
 		"'", ""
 	).replace("(", "").replace(")", "").replace("Namespace", "")
 

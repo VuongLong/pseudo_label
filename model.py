@@ -13,8 +13,8 @@ class PromptGenerator(nn.Module):
         embedding_dim = clip_model.ln_final.weight.shape[0]
 
         # Store the text embeddings to avoid the need for forward computation during evaluation.
-        self.register_buffer('features', torch.zeros(len(source_names)+2, len(classnames), feature_dim, device=args.device))
-        self.register_buffer('count', torch.zeros(len(source_names)+2, device=args.device))
+        self.register_buffer('target_features', torch.zeros(len(classnames), feature_dim, device=args.device))
+        self.count = 0
 
         ctx_cls_vector = torch.empty(
             n_cls,
@@ -86,7 +86,6 @@ class PromptGenerator(nn.Module):
         self.tokenized_prompts = tokenized_prompts
 
 
-
     def forward(self):
         ctx_cls = self.ctx_cls
         ctx_target = self.ctx_target
@@ -133,6 +132,10 @@ class PromptGenerator(nn.Module):
         )      
         return source_prompts
 
+    def store_txt_features(self, features):
+        self.target_features = self.target_features * self.count + features 
+        self.count += 1
+        self.target_features /= self.count
 
 
 
