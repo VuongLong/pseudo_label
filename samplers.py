@@ -27,7 +27,7 @@ class RandomDomainSampler(Sampler):
         # Make sure each domain has equal number of images
         if n_domain is None or n_domain <= 0:
             n_domain = len(self.domains)
-        assert batch_size % n_domain == 0
+        # assert batch_size % n_domain == 0
         self.n_img_per_domain = batch_size // n_domain
 
         self.batch_size = batch_size

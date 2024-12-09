@@ -78,3 +78,38 @@ def l1(logits_list):
                 )
             )
     return l1_loss
+
+
+
+from collections import deque
+
+
+class LossValley():
+
+    def __init__(self, n_converge, **kwargs):
+        """
+        Args:
+            n_converge: converge detector window size.
+        """
+        self.n_converge = n_converge
+        self.converge_Q = deque(maxlen=n_converge)
+        self.is_converged = False
+        self.converged_step = None
+
+
+    def update(self, loss, step):
+        if self.is_converged:
+            return
+
+        self.converge_Q.append(loss)
+
+        if not self.is_converged:
+            if len(self.converge_Q) < self.n_converge:
+                return
+            
+            min_idx = np.argmin(self.converge_Q)
+            if min_idx == 0:
+                self.is_converged = True
+                self.converged_step = step
+                print("Converged Step: ", step)
+                

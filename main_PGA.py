@@ -13,9 +13,9 @@ import torch.nn.functional as F
 
 from dataloader import load_pseudo_label_data, load_data
 from clip_custom import clip
-from model import Custom_Clip, PromptGenerator
+from model_PGA import Custom_Clip, PromptGenerator
 from utils import disable_running_stats, enable_running_stats
-from dataset import SingleSourceDataset
+from dataset import MultiSourceDataset
 from samplers import RandomDomainSampler
 
 
@@ -30,11 +30,12 @@ def arg_parse():
 		help="data file path",
 	)
 	parser.add_argument("--backbone", type=str, default="RN101", help="")
+	parser.add_argument("--target", type=str, default="Art", help="")
 	parser.add_argument("--dataset", type=str, default="ImageCLEF", help="")
 	parser.add_argument("--seed", type=int, default=1, help="")
 
 	# for dataloader
-	parser.add_argument("--batch_size", type=int, default=30, help="")
+	parser.add_argument("--batch_size", type=int, default=32, help="")
 	parser.add_argument("--num_workers", type=int, default=4, help="")
 	parser.add_argument("--pin_memory", type=bool, default=True, help="")
 	parser.add_argument(
@@ -53,11 +54,10 @@ def arg_parse():
 	# for training settings
 	parser.add_argument("--prompt_iteration", type=int, default=5000, help="")
 	parser.add_argument("--prompt_learning_rate", type=float, default=0.003, help="")
-	parser.add_argument("--radius", type=float, default=0.0003, help="")
-	parser.add_argument("--align", type=float, default=10.0, help="")
-	parser.add_argument("--tradeoff", type=float, default=0.5, help="")
+	parser.add_argument("--radius", type=float, default=0.0001, help="")
+	parser.add_argument("--align", type=float, default=1.0, help="")
+	parser.add_argument("--tradeoff", type=float, default=1.0, help="")
 	parser.add_argument("--entropy_tradeoff", type=float, default=0.0, help="")
-	parser.add_argument("--K", type=int, default=1, help="")
 
 	return parser
 
@@ -72,11 +72,6 @@ def args_update(args):
 	if args.dataset == "ImageCLEF":
 		args.backbone = "RN50"
 		args.prompt_iteration = 400
-		
-	if args.dataset == "S2RDA":
-		# Debugging
-		args.backbone = "RN50"
-		args.prompt_iteration = 0
 
 	if args.dataset == "Office31":
 		args.backbone = "RN50"
@@ -93,7 +88,7 @@ def args_update(args):
 	if args.dataset == "PACS":
 		args.backbone = "RN18"
 		args.prompt_iteration = 800
-
+	
 	if args.dataset == "ViT_ImageCLEF":
 		args.backbone = "ViT-B/16"
 		args.prompt_iteration = 400
@@ -101,14 +96,14 @@ def args_update(args):
 	if args.dataset == "ViT_OfficeHome":
 		args.backbone = "ViT-B/16"
 		args.prompt_iteration = 1000
-
+	
 	if args.dataset == "ViTL_ImageCLEF":
 		args.backbone = "ViT-L/14"
 		args.prompt_iteration = 400
 	
 	if args.dataset == "ViTL_OfficeHome":
 		args.backbone = "ViT-L/14"
-		args.prompt_iteration = 1000
+		args.prompt_iteration = 1000        
 		
 def test(target_test_loader, custom_clip_model, prompt_list, tokenized_prompts, args):
 	scale = custom_clip_model.logit_scale.exp()
@@ -124,7 +119,6 @@ def test(target_test_loader, custom_clip_model, prompt_list, tokenized_prompts, 
 			tot_logits = 0
 
 			# TODO: test on multiple prompts
-			
 			for prompt in prompt_list:
 				img_feature, txt_feature = custom_clip_model(
 					data, prompt, tokenized_prompts
@@ -143,7 +137,7 @@ def test(target_test_loader, custom_clip_model, prompt_list, tokenized_prompts, 
 	return correct / tot
 
 
-def train(domain_list, classnames, clip_model, preprocess, args):
+def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 	custom_clip_model = Custom_Clip(clip_model)
 	custom_clip_model = nn.DataParallel(custom_clip_model)
 	custom_clip_model = custom_clip_model.module
@@ -156,19 +150,18 @@ def train(domain_list, classnames, clip_model, preprocess, args):
 	best_accs = []
 	
 	for target_name in domain_list:
-		
 		print("*" * 50)
 		print("Start training on {}".format(target_name))
-		# if args.dataset == "DomainNet":
-		#     if target_name not in ['quickdraw']:
-		#         continue
+		if args.dataset == "DomainNet":
+			if target_name not in ['quickdraw']:
+				continue
 		if target_name=="b":
 			continue
 		tgt_save_path = os.path.join(args.output_dir, target_name)
 		os.makedirs(tgt_save_path, exist_ok=True)
 		result_path = os.path.join(tgt_save_path, "best_accuracy.txt")
-		if os.path.exists(result_path):
-			continue
+		# if os.path.exists(result_path):
+		# 	continue
 		orig_stdout = sys.stdout
 		f = open(tgt_save_path+ "/train.log", "w+")
 		sys.stdout = f
@@ -184,15 +177,15 @@ def train(domain_list, classnames, clip_model, preprocess, args):
 		)
 		target_test_loader = load_data(target_path, preprocess, args)
 
-		source_train_dataset = SingleSourceDataset(
+		source_train_dataset = MultiSourceDataset(
 			args.data_root, source_name_list, preprocess
 		)
 		sampler = RandomDomainSampler(
-			source_train_dataset.data, args.batch_size, len(source_name_list)
+			source_train_dataset.data, args.batch_size*len(source_name_list), len(source_name_list)
 		)
 		source_train_loader = torch.utils.data.DataLoader(
 			source_train_dataset,
-			batch_size=args.batch_size,
+			batch_size=args.batch_size*len(source_name_list),
 			sampler=sampler,
 			num_workers=4,
 			pin_memory=True,
@@ -219,7 +212,7 @@ def train(domain_list, classnames, clip_model, preprocess, args):
 		running_avg_cosine = 0
 		pbar = tqdm.tqdm(range(1, args.prompt_iteration + 1))
 		for step in pbar:
-			source_prompts, target_prompts = prompt_learner()
+			_, target_prompts = prompt_learner()
 
 			try:
 				target_data, target_label = next(target_iter)
@@ -228,23 +221,20 @@ def train(domain_list, classnames, clip_model, preprocess, args):
 				target_data, target_label = next(target_iter)
 
 			try:
-				source_data, source_label = next(source_iter)
+				source_data, source_label, source_domain = next(source_iter)
 			except Exception as err:
 				source_iter = iter(source_train_loader)
-				source_data, source_label = next(source_iter)
+				source_data, source_label, source_domain = next(source_iter)
 
 			target_data = target_data.to(args.device)
 			target_label = target_label.to(args.device)
 			source_data = source_data.to(args.device)
 			source_label = source_label.to(args.device)
-
-			# print("target_data", target_data.shape)
-			# print("source_data", source_data.shape)
-			# print("target_label", target_label.shape)
-			# print("source_label", source_label.shape)
+			source_domain = source_domain.to(args.device)
+			# if target_domain != target_name:
+			# 	continue
 
 			shared_param = prompt_learner.get_shared_param()
-			source_param = prompt_learner.get_source_param()
 			target_param = prompt_learner.get_target_param()
 
 			# loss 1, stage 1 #
@@ -264,25 +254,27 @@ def train(domain_list, classnames, clip_model, preprocess, args):
 
 			target_grad = prompt_learner.get_target_grad()
 			shared_grad_tgt = prompt_learner.get_shared_grad()
-
 			# loss 2, stage 1 #
-			enable_running_stats(custom_clip_model)
-			optimizer.zero_grad()
-			source_img_features, source_txt_features = custom_clip_model(
-				source_data, source_prompts, tokenized_prompts
-			)
-			source_logits = scale * source_img_features @ source_txt_features.t()
-			source_loss = F.cross_entropy(source_logits, source_label)
-			source_loss.backward()
+			shared_grad_srcs = []
+			source_grads = []
+			for source_index in range(len(source_name_list)):
+				enable_running_stats(custom_clip_model)
+				optimizer.zero_grad()
+				source_prompt, _ = prompt_learner(source_index=source_index)
+				source_img_features, source_txt_features = custom_clip_model(
+					source_data[source_domain==source_index], source_prompt, tokenized_prompts
+				)
+				source_logits = scale * source_img_features @ source_txt_features.t()
+				source_loss = F.cross_entropy(source_logits, source_label[source_domain==source_index])
+				source_loss.backward()
 
-			source_grad = prompt_learner.get_source_grad()
-			shared_grad_src = prompt_learner.get_shared_grad()
+				source_grad = prompt_learner.get_source_grad(source_index)
+				source_grads.append(source_grad)
+				shared_grad_src = prompt_learner.get_shared_grad()
+				shared_grad_srcs.append(shared_grad_src)
+				
+				
 			
-			similarity = cos(shared_grad_src, shared_grad_tgt).item()
-			running_avg_cosine = step/(step+1) * running_avg_cosine + 1/(step+1) * similarity
-			
-			grad_cosine.append(running_avg_cosine)
-			n_conflict += similarity < 0      
 				  
 			# loss 1, stage 2 #
 			perturbed_target_param = target_param + args.radius * target_grad / (
@@ -292,11 +284,11 @@ def train(domain_list, classnames, clip_model, preprocess, args):
 
 			perturbed_shared_param = shared_param + args.radius * shared_grad_tgt / (
 				torch.norm(shared_grad_tgt) + 1e-12
-			) - args.align * shared_grad_src/(torch.norm(shared_grad_src)*torch.norm(shared_grad_tgt) + 1e-12)
+			) - args.align * sum([shared_grad_src/(torch.norm(shared_grad_src)*torch.norm(shared_grad_tgt) + 1e-12) for shared_grad_src in shared_grad_srcs])
 			
 			prompt_learner.set_shared_param(perturbed_shared_param)
 			
-			source_prompts, target_prompts = prompt_learner()
+			_, target_prompts = prompt_learner()
 			disable_running_stats(custom_clip_model)
 			target_img_features, target_txt_features = custom_clip_model(
 				target_data, target_prompts, tokenized_prompts
@@ -311,42 +303,55 @@ def train(domain_list, classnames, clip_model, preprocess, args):
 			
 			target_grad = prompt_learner.get_target_grad()
 			shared_grad_tgt_new = prompt_learner.get_shared_grad()
-			
 			# loss 2, stage 2 #
-			perturbed_source_param = source_param + args.radius * source_grad / (
-				torch.norm(source_grad) + 1e-12
-			)
-			prompt_learner.set_source_param(perturbed_source_param)
-			
-			perturbed_shared_param = shared_param + args.radius * shared_grad_src / (
-				torch.norm(shared_grad_src) + 1e-12 
-			) - args.align * shared_grad_tgt/(torch.norm(shared_grad_tgt)*torch.norm(shared_grad_src) + 1e-12)
-			prompt_learner.set_shared_param(perturbed_shared_param)
-	
-			source_prompts, target_prompts = prompt_learner()
-			disable_running_stats(custom_clip_model)
-			optimizer.zero_grad()
-			source_img_features, source_txt_features = custom_clip_model(
-				source_data, source_prompts, tokenized_prompts
-			)
-			source_logits = scale * source_img_features @ source_txt_features.t()
-			source_loss = F.cross_entropy(source_logits, source_label)
-			source_loss.backward()
+			source_params = []
+			source_grads_new = []
+			shared_grad_srcs_new = []
 
-			source_grad = prompt_learner.get_source_grad()
-			shared_grad_src_new = prompt_learner.get_shared_grad()
+			for source_index in range(len(source_name_list)):
+				source_param = prompt_learner.get_source_param(source_index)
+				source_grad = source_grads[source_index]
+				source_params.append(source_param)
+				shared_grad_src = shared_grad_srcs[source_index]
+				perturbed_source_param = source_param + args.radius * source_grad / (
+					torch.norm(source_grad) + 1e-12
+				)
+				prompt_learner.set_source_param(source_index, perturbed_source_param)
+				
+				perturbed_shared_param = shared_param + args.radius * shared_grad_src / (
+					torch.norm(shared_grad_src) + 1e-12 
+				) - args.align * shared_grad_tgt/(torch.norm(shared_grad_tgt)*torch.norm(shared_grad_src) + 1e-12)
+				prompt_learner.set_shared_param(perturbed_shared_param)
+		
+				source_prompt, _ = prompt_learner(source_index)
+				disable_running_stats(custom_clip_model)
+				optimizer.zero_grad()
+				source_img_features, source_txt_features = custom_clip_model(
+					source_data[source_domain==source_index], source_prompt, tokenized_prompts
+				)
+				source_logits = scale * source_img_features @ source_txt_features.t()
+				source_loss = F.cross_entropy(source_logits, source_label[source_domain==source_index])
+				source_loss.backward()
+
+				source_grad = prompt_learner.get_source_grad(source_index)
+				shared_grad_src_new = prompt_learner.get_shared_grad()
+				source_grads_new.append(source_grad)
+				shared_grad_srcs_new.append(shared_grad_src_new)
 			
 
 			# loss update #
 			# torch.nn.utils.clip_grad_norm_(prompt_learner.parameters(), 1)
 			prompt_learner.set_target_param(target_param)
-			prompt_learner.set_source_param(source_param)
 			prompt_learner.set_shared_param(shared_param)            
+			
+			for source_index in range(len(source_name_list)):
+				prompt_learner.set_source_param( source_index, source_params[source_index])
+				prompt_learner.set_source_grad(source_index, source_grads_new[source_index])
 
-			shared_grad = shared_grad_tgt_new + shared_grad_src_new * args.tradeoff
+
+			shared_grad = shared_grad_tgt_new + sum([shared_grad_src_new for shared_grad_src_new in shared_grad_srcs_new]) *  args.tradeoff
 			prompt_learner.set_shared_grad(shared_grad)
 			prompt_learner.set_target_grad(target_grad)
-			prompt_learner.set_source_grad(source_grad)
 			optimizer.step()
 
 			if step % (args.prompt_iteration / 20) == 0:
@@ -373,9 +378,25 @@ def train(domain_list, classnames, clip_model, preprocess, args):
 				else:
 					if step%10:
 						continue
-			if step % 50:
+			
+			if step % 100:
 				continue
-			prompt_list = [source_prompts, target_prompts]
+
+			acc = test(
+				target_test_loader,
+				custom_clip_model,
+				[target_prompts],
+				tokenized_prompts,
+				args,
+			)
+			print('Target :', acc)
+
+			prompt_list = []
+
+			for source_index in range(len(source_name_list)):
+				source_prompt, _ = prompt_learner(source_index=source_index)
+				prompt_list.append(source_prompt)
+			
 			acc = test(
 				target_test_loader,
 				custom_clip_model,
@@ -383,12 +404,25 @@ def train(domain_list, classnames, clip_model, preprocess, args):
 				tokenized_prompts,
 				args,
 			)
+			print('Source :', acc)
+
+			prompt_list.append(target_prompts)
+
+			acc = test(
+				target_test_loader,
+				custom_clip_model,
+				prompt_list,
+				tokenized_prompts,
+				args,
+			)
+			print('All :', acc)
+
 			pbar.set_description(
 				f"step: {step}, accuracy: {acc}, target total loss: {target_loss.item()}, classification: {target_cls_loss.item()}, entropy: {target_entropy_loss.item()}"
 			)
 			if acc > best_acc:
 				best_acc = acc
-			print(f"Best accuracy so far: {best_acc}, step {step}, accuracy {acc}")
+			print(f"Best accuracy so far: {best_acc}, step {step}, accuracy {acc}")            
 		best_accs.append(best_acc)
 		print("Best accuracy for each domain:", best_accs, "Average:", np.mean(best_accs))
 		print("Number of conflicts:", n_conflict, "Total steps:", args.prompt_iteration, "Conflict rate:", n_conflict/args.prompt_iteration)
@@ -435,6 +469,7 @@ def main(args):
 
 	model, preprocess = clip.load(args.backbone, device=args.device)
 	model.float()
+	args.data_root = args.data_root + args.dataset +'/'
 	domain_list = os.listdir(args.data_root)
 
 	domain_list = [x for x in domain_list if ".txt" not in x]
@@ -445,7 +480,7 @@ def main(args):
 	n_cls = len(classnames)
 	classnames.sort()
 
-	args.output_dir = "outputs/GPA_CLEF/" + str(args).replace(", ", "/").replace(
+	args.output_dir = "outputs/GPA_multi_OH/" + str(args).replace(", ", "/").replace(
 		"'", ""
 	).replace("(", "").replace(")", "").replace("Namespace", "")
 
@@ -454,7 +489,7 @@ def main(args):
 	os.makedirs(args.output_dir, exist_ok=True)
 
 	args.n_cls = n_cls
-	train(domain_list, classnames, model, preprocess, args)
+	train(domain_list, args.target, classnames, model, preprocess, args)
 
 
 if __name__ == "__main__":
