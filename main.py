@@ -22,6 +22,71 @@ from samplers import RandomDomainSampler
 import ot
 
 
+import torchvision.transforms as T
+from torchvision.transforms.functional import InterpolationMode
+
+# For older torchvision versions, you can use:
+# from PIL import Image
+# BICUBIC = Image.BICUBIC
+# but for newer ones:
+BICUBIC = InterpolationMode.BICUBIC
+
+class AddGaussianNoise(object):
+    """
+    Custom transform to add Gaussian noise to a PyTorch tensor.
+    
+    Attributes
+    ----------
+    mean : float
+        Mean of the Gaussian noise distribution.
+    std : float
+        Standard deviation of the Gaussian noise distribution.
+    clip : bool
+        Whether to clip the output to [clip_min, clip_max].
+    clip_min, clip_max : float
+        Range for clipping if clip=True.
+    """
+    def __init__(self, mean=0.0, std=0.1, clip=True, clip_min=0.0, clip_max=1.0):
+        self.mean = mean
+        self.std = std
+        self.clip = clip
+        self.clip_min = clip_min
+        self.clip_max = clip_max
+
+    def __call__(self, tensor: torch.Tensor) -> torch.Tensor:
+        # Generate noise of the same shape
+        noise = torch.randn_like(tensor) * self.std + self.mean
+
+        # Add noise to the original tensor
+        noisy_tensor = tensor + noise
+
+        # Optionally clamp/clip to keep values within [clip_min, clip_max]
+        if self.clip:
+            noisy_tensor = torch.clamp(noisy_tensor, self.clip_min, self.clip_max)
+
+        return noisy_tensor
+
+def _convert_image_to_rgb(image):
+    return image.convert("RGB")
+
+def create_preprocess(n_px, std=0.1):
+    return T.Compose(
+        [
+            T.Resize(n_px, interpolation=BICUBIC),
+            T.CenterCrop(n_px),
+            _convert_image_to_rgb,
+            T.ToTensor(),
+            # --- Insert your custom noise transform here ---
+            AddGaussianNoise(mean=0.0, std=std, clip=True, clip_min=0.0, clip_max=1.0),
+            
+            T.Normalize(
+                mean=(0.48145466, 0.4578275, 0.40821073),
+                std=(0.26862954, 0.26130258, 0.27577711),
+            ),
+        ]
+    )
+
+
 def arg_parse():
 	parser = argparse.ArgumentParser("Training and Evaluation Script", add_help=False)
 
@@ -66,6 +131,9 @@ def arg_parse():
 	parser.add_argument("--OT_clustering", type=int, default=1, help="")
 	parser.add_argument("--enhanced_pseudo_label", type=int, default=1, help="")
 	parser.add_argument("--entropy_tradeoff", type=float, default=0.0, help="")
+
+	# rebuttal 
+	parser.add_argument("--noise", type=float, default=0.1, help="Corruption noise")
 
 
 
@@ -184,7 +252,7 @@ def train(domain_list, classnames, clip_model, preprocess, args):
 	if args.dataset == "DomainNet":
 		feature_dim = 512
 	print('feature_dim', feature_dim)
-
+	target_preprocess = create_preprocess(n_px=224, std=args.noise)
 	for target_name in domain_list:
 		print("*" * 50)
 		print("Start training on {}".format(target_name))
@@ -203,10 +271,10 @@ def train(domain_list, classnames, clip_model, preprocess, args):
 		target_path = os.path.join(args.data_root, target_name)
 
 		target_train_loader = load_pseudo_label_data(
-			target_name, target_path, preprocess, clip_model, args
+			target_name, target_path, target_preprocess, clip_model, args
 		)
 
-		target_test_loader = load_data(target_path, preprocess, args)
+		target_test_loader = load_data(target_path, target_preprocess, args)
 
 		source_train_dataset = MultiSourceDataset(
 			args.data_root, source_name_list, preprocess
