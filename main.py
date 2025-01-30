@@ -21,8 +21,9 @@ from dataset import SingleSourceDataset, MultiSourceDataset
 from samplers import RandomDomainSampler
 import ot
 
-
+# rebuttal
 import torchvision.transforms as T
+from corruptions import CorruptionTransform
 from torchvision.transforms.functional import InterpolationMode
 
 # For older torchvision versions, you can use:
@@ -31,53 +32,23 @@ from torchvision.transforms.functional import InterpolationMode
 # but for newer ones:
 BICUBIC = InterpolationMode.BICUBIC
 
-class AddGaussianNoise(object):
-    """
-    Custom transform to add Gaussian noise to a PyTorch tensor.
-    
-    Attributes
-    ----------
-    mean : float
-        Mean of the Gaussian noise distribution.
-    std : float
-        Standard deviation of the Gaussian noise distribution.
-    clip : bool
-        Whether to clip the output to [clip_min, clip_max].
-    clip_min, clip_max : float
-        Range for clipping if clip=True.
-    """
-    def __init__(self, mean=0.0, std=0.1, clip=True, clip_min=0.0, clip_max=1.0):
-        self.mean = mean
-        self.std = std
-        self.clip = clip
-        self.clip_min = clip_min
-        self.clip_max = clip_max
 
-    def __call__(self, tensor: torch.Tensor) -> torch.Tensor:
-        # Generate noise of the same shape
-        noise = torch.randn_like(tensor) * self.std + self.mean
 
-        # Add noise to the original tensor
-        noisy_tensor = tensor + noise
 
-        # Optionally clamp/clip to keep values within [clip_min, clip_max]
-        if self.clip:
-            noisy_tensor = torch.clamp(noisy_tensor, self.clip_min, self.clip_max)
 
-        return noisy_tensor
 
 def _convert_image_to_rgb(image):
     return image.convert("RGB")
 
-def create_preprocess(n_px, std=0.1):
+def create_preprocess(n_px, corruption, severity=1):
     return T.Compose(
         [
             T.Resize(n_px, interpolation=BICUBIC),
             T.CenterCrop(n_px),
             _convert_image_to_rgb,
-            T.ToTensor(),
             # --- Insert your custom noise transform here ---
-            AddGaussianNoise(mean=0.0, std=std, clip=True, clip_min=0.0, clip_max=1.0),
+            CorruptionTransform(corruption, severity=severity),
+            T.ToTensor(),
             
             T.Normalize(
                 mean=(0.48145466, 0.4578275, 0.40821073),
@@ -133,7 +104,9 @@ def arg_parse():
 	parser.add_argument("--entropy_tradeoff", type=float, default=0.0, help="")
 
 	# rebuttal 
-	parser.add_argument("--noise", type=float, default=0.1, help="Corruption noise")
+ 
+	parser.add_argument("--corruption", type=str, help="")
+	parser.add_argument("--severity", type=int, default=1, help="")
 
 
 
@@ -188,6 +161,11 @@ def args_update(args):
 	if args.dataset == "ViTL_OfficeHome":
 		args.backbone = "ViT-L/14"
 		args.prompt_iteration = 1000
+		args.dataset = "OfficeHome"
+
+	if args.dataset == "ViTL_DomainNet":
+		args.backbone = "ViT-L/14"
+		args.prompt_iteration = 1000  
 
 
 def test(target_test_loader, custom_clip_model, text_embeddings, args):
@@ -249,10 +227,9 @@ def train(domain_list, classnames, clip_model, preprocess, args):
 	last_accs = []
 
 	feature_dim = 1024
-	if args.dataset == "DomainNet":
-		feature_dim = 512
+  
 	print('feature_dim', feature_dim)
-	target_preprocess = create_preprocess(n_px=224, std=args.noise)
+	target_preprocess = create_preprocess(n_px=224, corruption=args.corruption, severity=args.severity)
 	for target_name in domain_list:
 		print("*" * 50)
 		print("Start training on {}".format(target_name))
