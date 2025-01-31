@@ -21,6 +21,42 @@ from dataset import SingleSourceDataset, MultiSourceDataset
 from samplers import RandomDomainSampler
 import ot
 
+# rebuttal
+import torchvision.transforms as T
+from corruptions import CorruptionTransform
+from torchvision.transforms.functional import InterpolationMode
+
+# For older torchvision versions, you can use:
+# from PIL import Image
+# BICUBIC = Image.BICUBIC
+# but for newer ones:
+BICUBIC = InterpolationMode.BICUBIC
+
+
+
+
+
+
+def _convert_image_to_rgb(image):
+    return image.convert("RGB")
+
+def create_preprocess(n_px, corruption, severity=1):
+    return T.Compose(
+        [
+            T.Resize(n_px, interpolation=BICUBIC),
+            T.CenterCrop(n_px),
+            _convert_image_to_rgb,
+            # --- Insert your custom noise transform here ---
+            CorruptionTransform(corruption, severity=severity),
+            T.ToTensor(),
+            
+            T.Normalize(
+                mean=(0.48145466, 0.4578275, 0.40821073),
+                std=(0.26862954, 0.26130258, 0.27577711),
+            ),
+        ]
+    )
+
 
 def arg_parse():
 	parser = argparse.ArgumentParser("Training and Evaluation Script", add_help=False)
@@ -67,6 +103,11 @@ def arg_parse():
 	parser.add_argument("--enhanced_pseudo_label", type=int, default=1, help="")
 	parser.add_argument("--entropy_tradeoff", type=float, default=0.0, help="")
 
+	# rebuttal 
+ 
+	parser.add_argument("--corruption", type=str, help="")
+	parser.add_argument("--severity", type=int, default=1, help="")
+
 
 
 	return parser
@@ -82,9 +123,6 @@ def entropy_loss(logits):
 def args_update(args):
 	if args.dataset == "ImageCLEF":
 		args.prompt_iteration = 400
-		
-	if args.dataset == "S2RDA":
-		args.prompt_iteration = 0
 
 	if args.dataset == "Office31":
 		args.prompt_iteration = 600
@@ -96,8 +134,6 @@ def args_update(args):
 		args.prompt_iteration = 1000
 
 	if args.dataset == "PACS":
-		args.prompt_iteration = 800
-	if args.dataset == "VLCS":
 		args.prompt_iteration = 800
 
 
@@ -159,17 +195,10 @@ def train(domain_list, classnames, clip_model, preprocess, args):
 	print("Custom_Clip", summary(custom_clip_model))
 	last_accs = []
 
-	if args.backbone == 'ViT-B/16':
-		feature_dim = 512
-	elif args.backbone == 'ViT-L/14':
-		feature_dim = 768
-	elif args.backbone == 'RN50':
-		feature_dim = 1024
-	elif args.backbone == "RN101":
-		feature_dim = 512
-
+	feature_dim = 1024
+  
 	print('feature_dim', feature_dim)
-
+	target_preprocess = create_preprocess(n_px=224, corruption=args.corruption, severity=args.severity)
 	for target_name in domain_list:
 		print("*" * 50)
 		print("Start training on {}".format(target_name))
@@ -187,26 +216,11 @@ def train(domain_list, classnames, clip_model, preprocess, args):
 
 		target_path = os.path.join(args.data_root, target_name)
 
-		if args.dataset == "DomainNet":
-			target_train_dataset = SingleSourceDataset(
-				args.data_root, [target_name], preprocess
-			)
-			target_train_loader = torch.utils.data.DataLoader(
-				target_train_dataset,
-				batch_size=args.batch_size,
-				num_workers=4,
-				pin_memory=True,
-			)	
-		else:
-			target_train_loader = load_pseudo_label_data(
-				target_name, target_path, preprocess, clip_model, args
-			)
+		target_train_loader = load_pseudo_label_data(
+			target_name, target_path, target_preprocess, clip_model, args
+		)
 
-		# target_train_loader = load_pseudo_label_data(
-		# 	target_name, target_path, preprocess, clip_model, args
-		# )
-
-		target_test_loader = load_data(target_path, preprocess, args)
+		target_test_loader = load_data(target_path, target_preprocess, args)
 
 		source_train_dataset = MultiSourceDataset(
 			args.data_root, source_name_list, preprocess

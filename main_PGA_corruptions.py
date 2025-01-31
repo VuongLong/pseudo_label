@@ -18,6 +18,42 @@ from utils import disable_running_stats, enable_running_stats
 from dataset import MultiSourceDataset
 from samplers import RandomDomainSampler
 
+# rebuttal
+import torchvision.transforms as T
+from corruptions import CorruptionTransform
+from torchvision.transforms.functional import InterpolationMode
+
+# For older torchvision versions, you can use:
+# from PIL import Image
+# BICUBIC = Image.BICUBIC
+# but for newer ones:
+BICUBIC = InterpolationMode.BICUBIC
+
+
+
+
+
+
+def _convert_image_to_rgb(image):
+    return image.convert("RGB")
+
+def create_preprocess(n_px, corruption, severity=1):
+    return T.Compose(
+        [
+            T.Resize(n_px, interpolation=BICUBIC),
+            T.CenterCrop(n_px),
+            _convert_image_to_rgb,
+            # --- Insert your custom noise transform here ---
+            CorruptionTransform(corruption, severity=severity),
+            T.ToTensor(),
+            
+            T.Normalize(
+                mean=(0.48145466, 0.4578275, 0.40821073),
+                std=(0.26862954, 0.26130258, 0.27577711),
+            ),
+        ]
+    )
+
 
 def arg_parse():
 	parser = argparse.ArgumentParser("Training and Evaluation Script", add_help=False)
@@ -29,7 +65,7 @@ def arg_parse():
 		default=r"/vast/hvp2011/data/office-31/",
 		help="data file path",
 	)
-	parser.add_argument("--backbone", type=str, default="RN101", help="")
+	parser.add_argument("--backbone", type=str, default="RN50", help="")
 	parser.add_argument("--target", type=str, default="Art", help="")
 	parser.add_argument("--dataset", type=str, default="ImageCLEF", help="")
 	parser.add_argument("--seed", type=int, default=1, help="")
@@ -58,7 +94,10 @@ def arg_parse():
 	parser.add_argument("--align", type=float, default=1.0, help="")
 	parser.add_argument("--tradeoff", type=float, default=1.0, help="")
 	parser.add_argument("--entropy_tradeoff", type=float, default=0.0, help="")
-
+	# rebuttal 
+ 
+	parser.add_argument("--corruption", type=str, help="")
+	parser.add_argument("--severity", type=int, default=1, help="")
 	return parser
 
 
@@ -144,7 +183,9 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 		param.requires_grad_(False)
 	print("Custom_Clip", summary(custom_clip_model))
 	best_accs = []
-	
+	target_preprocess = create_preprocess(n_px=224, corruption=args.corruption, severity=args.severity)
+
+
 	for target_name in domain_list:
 		print("*" * 50)
 		print("Start training on {}".format(target_name))
@@ -169,12 +210,12 @@ def train(domain_list, target_domain, classnames, clip_model, preprocess, args):
 		target_path = os.path.join(args.data_root, target_name)
 
 		target_train_loader = load_pseudo_label_data(
-			target_name, target_path, preprocess, clip_model, args
+			target_name, target_path, target_preprocess, clip_model, args
 		)
-		target_test_loader = load_data(target_path, preprocess, args)
+		target_test_loader = load_data(target_path, target_preprocess, args)
 
 		source_train_dataset = MultiSourceDataset(
-			args.data_root, source_name_list, preprocess
+			args.data_root, source_name_list, target_preprocess
 		)
 		sampler = RandomDomainSampler(
 			source_train_dataset.data, args.batch_size*len(source_name_list), len(source_name_list)
@@ -476,7 +517,7 @@ def main(args):
 	n_cls = len(classnames)
 	classnames.sort()
 
-	args.output_dir = "outputs/GPA_multi_OH/" + str(args).replace(", ", "/").replace(
+	args.output_dir = "outputs_PGA_corrupted/GPA_multi_OH/" + str(args).replace(", ", "/").replace(
 		"'", ""
 	).replace("(", "").replace(")", "").replace("Namespace", "")
 
